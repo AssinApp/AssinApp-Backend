@@ -56,6 +56,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 
 # Modelo Pydantic
 class User(BaseModel):
+    name: str
     email: EmailStr
     password: str
 
@@ -70,11 +71,11 @@ async def create_user(user: User):
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO users (email, password_hash, otp_secret)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO users (name, email, password_hash, otp_secret)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING id
                     """,
-                    (user.email, hashed_password, otp_secret),
+                    (user.name, user.email, hashed_password, otp_secret),
                 )
                 user_id = cursor.fetchone()["id"]
                 conn.commit()
@@ -83,7 +84,32 @@ async def create_user(user: User):
     except psycopg2.Error as e:
         raise HTTPException(status_code=500, detail=f"Erro no banco de dados: {e.pgerror}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro interno no servidor: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro interno no servidor: {str(e)}")
+    
+@app.get("/otp/{email}")
+async def get_otp(email: str):
+    """Gera um código OTP baseado no segredo do usuário."""
+    try:
+        # Consulta ao banco de dados para obter o segredo OTP do usuário
+        with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT otp_secret FROM users WHERE email = %s", (email,))
+                user = cursor.fetchone()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+        # Gera o código OTP usando pyotp
+        totp = pyotp.TOTP(user["otp_secret"])
+        otp_code = totp.now()
+
+        # Retorna o código OTP e o tempo de expiração (30 segundos)
+        return {"otp": otp_code, "expires_in": 30}
+    except psycopg2.Error as e:
+        raise HTTPException(status_code=500, detail=f"Erro no banco de dados: {e.pgerror}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro interno no servidor: {str(e)}")
+    
 
 # Rota para login e geração de token
 @app.post("/token")
@@ -108,9 +134,23 @@ async def read_users_me(token: str = Depends(oauth2_scheme)):
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=401, detail="Token inválido")
-        return {"email": email}
+
+        # Consulta ao banco de dados para obter o nome e o email
+        with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT name, email FROM users WHERE email = %s", (email,))
+                user = cursor.fetchone()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        
+        # Retorna o nome e o email
+        return {"name": user["name"], "email": user["email"]}
     except JWTError:
         raise HTTPException(status_code=401, detail="Token inválido")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+
 
 # Rota para upload de arquivos PDF
 @app.post("/upload/")
