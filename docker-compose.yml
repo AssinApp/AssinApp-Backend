@@ -16,6 +16,7 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgres://user:password@db:5432/fastapi_db
+      SECRET_KEY: 36271470
     ports:
       - "8000:8000"
     depends_on:

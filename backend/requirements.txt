@@ -5,3 +5,6 @@ pyotp
 passlib[bcrypt]
 python-dotenv
 pydantic[email]
+python-multipart
+python-jose
+
