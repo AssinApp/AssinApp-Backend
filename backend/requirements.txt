@@ -6,5 +6,7 @@ passlib[bcrypt]
 python-dotenv
 pydantic[email]
 python-multipart
-python-jose
+python-jose[cryptography]
 bcrypt==3.2.2
+cryptography
+pyjwt 
