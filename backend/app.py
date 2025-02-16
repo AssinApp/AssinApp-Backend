@@ -81,6 +81,11 @@ class User(BaseModel):
     password: str
     public_key: str = None  
     
+
+@app.get("/")
+async def root():
+    return {"message": "API rodando com sucesso!"}
+    
     
 @app.get("/users/me")
 async def read_users_me(token: str = Depends(oauth2_scheme)):
